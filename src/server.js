@@ -11,6 +11,17 @@ function auth(req,res,next) {
   if (!expected || supplied !== expected) return res.status(401).json({ error:'Unauthorized' });
   next();
 }
+app.get('/api/settings', auth, async (req,res) => {
+  try { res.json({auto_chat_enabled:await db.getSetting('auto_chat_enabled',false)}); }
+  catch(e) { res.status(500).json({error:'Could not load bot settings'}); }
+});
+app.put('/api/settings', auth, async (req,res) => {
+  try {
+    if(typeof req.body?.auto_chat_enabled!=='boolean') return res.status(400).json({error:'auto_chat_enabled must be true or false'});
+    await db.setSetting('auto_chat_enabled',req.body.auto_chat_enabled);
+    res.json({ok:true,auto_chat_enabled:await db.getSetting('auto_chat_enabled',false)});
+  } catch(e) { res.status(500).json({error:'Could not save bot settings'}); }
+});
 app.get('/api/status', auth, (req,res) => res.json(bot.status()));
 app.post('/api/switch-account', auth, async (req,res) => {
   try {
