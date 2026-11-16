@@ -60,7 +60,7 @@ async function handleMessage(msg) {
   const botId = sock.user?.id?.split(':')[0] + '@s.whatsapp.net';
   const botInfo = metadata.participants.find(p => p.id === botId || p.id?.startsWith(sock.user?.id?.split(':')[0]));
   const botAdmin = !!(botInfo && (botInfo.admin === 'admin' || botInfo.admin === 'superadmin'));
-  const reply = t => sock.sendMessage(jid, { text: t }, { quoted: msg });
+  const reply = (t, options = {}) => sock.sendMessage(jid, { text: t, ...options }, { quoted: msg });
   const command = text.trim().match(/^!(\w+)(?:\s+([\s\S]*))?$/);
   if (command) {
     const name = command[1].toLowerCase(), arg = (command[2] || '').trim();
