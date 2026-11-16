@@ -98,7 +98,7 @@ async function startBot() {
   } catch (e) { connecting = false; logger.error({err:e}, 'WhatsApp startup failed'); throw e; }
 }
 const activity = new Map();
-const privateReplyTimes = new Map();
+const autoChatReplyTimes = new Map();
 function numberOf(jid) { return String(jid || '').split('@')[0].split(':')[0]; }
 function isAdmin(p) { return !!(p && (p.admin === 'admin' || p.admin === 'superadmin')); }
 function rememberActivity(key, body) {
@@ -113,14 +113,14 @@ async function handleMessage(msg) {
   if(!isGroup(jid)) {
     if(!jid.endsWith('@s.whatsapp.net')&&!jid.endsWith('@lid'))return;
     const text=getText(msg).trim();
-    if(!text)return;
+    if(!text || !(await db.getSetting('auto_chat_enabled',false)))return;
     const sender=msg.key.participant||jid;
-    const now=Date.now(), last=privateReplyTimes.get(sender)||0;
+    const now=Date.now(), last=autoChatReplyTimes.get(sender)||0;
     if(now-last<2500)return;
-    privateReplyTimes.set(sender,now);
+    autoChatReplyTimes.set(sender,now);
     const reply=t=>sock.sendMessage(jid,{text:String(t).slice(0,4000)},{quoted:msg});
     try{return reply(await askAI(text));}
-    catch(e){logger.warn({err:e},'private chat AI request failed');return reply('I could not answer just now. Please try again in a moment.');}
+    catch(e){logger.warn({err:e},'private auto-chat AI request failed');return reply('I could not answer just now. Please try again in a moment.');}
   }
   const text=getText(msg), sender=msg.key.participant||msg.participant;
   if(!sender)return;
@@ -175,6 +175,16 @@ async function handleMessage(msg) {
   if(group.ai_moderation&&process.env.AI_AUTO_MODERATION==='true'&&text&&!senderAdmin) {
     try {const result=await inspectText(text);if(result.flagged&&botAdmin){await sock.sendMessage(jid,{delete:msg.key});await db.logEvent(jid,sender,'ai_moderation',{categories:result.categories});await reply('🛡️ A message was removed by AI moderation. If this was a mistake, contact a group admin.');}}
     catch(e){logger.warn({err:e},'AI moderation unavailable');}
+  }
+
+  if(text && await db.getSetting('auto_chat_enabled',false)) {
+    const chatKey=jid+':'+sender;
+    const now=Date.now(), last=autoChatReplyTimes.get(chatKey)||0;
+    if(now-last>=5000) {
+      autoChatReplyTimes.set(chatKey,now);
+      try { await reply(await askAI(text)); }
+      catch(e) { logger.warn({err:e,group:jid},'group auto-chat AI request failed'); }
+    }
   }
 }
 async function handleParticipantUpdate(update) {
