@@ -55,3 +55,9 @@ CREATE TABLE IF NOT EXISTS group_bad_words (
   word TEXT NOT NULL,
   PRIMARY KEY(group_jid,word)
 );
+
+CREATE TABLE IF NOT EXISTS bot_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
