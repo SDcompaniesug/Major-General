@@ -6,7 +6,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/bot.js && node --check src/db.js && node --check src/moderation.js && node --check src/ai.js"
+    "check": "node --check src/server.js && node --check src/bot.js && node --check src/db.js && node --check src/moderation.js && node --check src/ai.js",
+    "build": "vite build"
   },
   "engines": {
     "node": ">=20"
@@ -18,5 +19,11 @@
     "pg": "^8.13.3",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
-}
+}\n
