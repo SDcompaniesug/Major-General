@@ -14,6 +14,7 @@ RUN npm install --omit=dev --no-audit --no-fund --fetch-retries=5 --fetch-timeou
 
 COPY src ./src
 COPY sql ./sql
+RUN npm run check
 
 EXPOSE 3000
 CMD ["node", "src/server.js"]
