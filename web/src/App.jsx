@@ -170,9 +170,26 @@ export default function App() {
               <div className="member-heading"><div><b>Live members</b><small>{members.length} members · WhatsApp group metadata</small></div><button className="secondary-btn" onClick={()=>loadMembers(selected)} disabled={memberBusy}>↻ Refresh</button></div>
               {memberMeta?.error&&<div className="warning-note">{memberMeta.error}</div>}
               {memberMeta&&!memberMeta.botAdmin&&<div className="warning-note">Promote Major General to group admin in WhatsApp before using member controls. It cannot promote itself.</div>}
-              <div className="members-list">{memberBusy&&!members.length?<div className="member-empty">Loading members…</div>:members.map(m=><div className="member-row" key={m.id}><div className="member-avatar">{(m.name||m.number||'?').slice(0,1).toUpperCase()}</div><div className="member-info"><b>{m.name||m.number}</b><small>{m.number}{m.admin==='superadmin'?' · Group creator':m.admin==='admin'?' · Admin':''}{m.isBot?' · Major General':''}</small></div><div className="member-actions">
-                {m.isBot?<span className="status-tag online">BOT</span>:m.admin==='superadmin'?<span className="status-tag">OWNER</span>:m.admin==='admin'?<><button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'demote')}>Demote</button><button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button></>:<><button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'promote')}>Make admin</button><button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button></>}
-              </div></div>):<div className="member-empty">No members loaded. Refresh to try again.</div>}</div>
+              <div className="members-list">
+                {memberBusy&&!members.length ? <div className="member-empty">Loading members…</div> : members.length ? members.map(m => (
+                  <div className="member-row" key={m.id}>
+                    <div className="member-avatar">{(m.name||m.number||'?').slice(0,1).toUpperCase()}</div>
+                    <div className="member-info">
+                      <b>{m.name||m.number}</b>
+                      <small>{m.number}{m.admin==='superadmin'?' · Group creator':m.admin==='admin'?' · Admin':''}{m.isBot?' · Major General':''}</small>
+                    </div>
+                    <div className="member-actions">
+                      {m.isBot ? <span className="status-tag online">BOT</span> : m.admin==='superadmin' ? <span className="status-tag">OWNER</span> : m.admin==='admin' ? <>
+                        <button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'demote')}>Demote</button>
+                        <button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button>
+                      </> : <>
+                        <button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'promote')}>Make admin</button>
+                        <button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button>
+                      </>}
+                    </div>
+                  </div>
+                )) : <div className="member-empty">No members loaded. Refresh to try again.</div>}
+              </div>
               <div className="protection-list">{protections.map(([key,title,desc])=><div className="protection-row" key={key}><div><b>{title}</b><small>{desc}</small></div><Toggle checked={!!group[key]} onChange={value=>saveSetting({[key]:value})}/></div>)}</div>
             </div>
             <div className="panel"><div className="panel-heading"><div><h3>Group messages & rules</h3><p>Customize what Major General sends in this group.</p></div></div>
