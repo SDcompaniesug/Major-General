@@ -86,18 +86,6 @@ export default function App() {
     catch(err){setMembers([]);setMemberMeta({error:err.message});}
     finally{setMemberBusy(false);}
   }
-  async function memberAction(member,action) {
-    const label=action==='remove'?'remove this member from the group':action==='demote'?'remove this member’s admin role':'promote this member to admin';
-    if(!window.confirm('Are you sure you want to '+label+'?'))return;
-    setMemberBusy(true);setNotice('Sending '+action+' request to WhatsApp…');
-    try {
-      await api('/api/groups/'+encodeURIComponent(selected)+'/members/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({memberJid:member.id})});
-      setNotice('WhatsApp confirmed the '+action+' request. Refreshing members…');
-      await loadMembers(selected);
-      setNotice('Member list updated.');
-    } catch(err){setNotice(err.message);}
-    finally{setMemberBusy(false);}
-  }
   async function saveSetting(values) {
     if(!selected) return;
     setNotice('Saving changes…');
@@ -169,7 +157,6 @@ export default function App() {
             <div className="panel"><div className="panel-heading"><div><div className="eyebrow">SELECTED GROUP</div><h3>{group.subject||'WhatsApp group'}</h3><p>{group.jid}</p></div><span className={memberMeta?.botAdmin?'status-tag online':'status-tag offline'}>{memberMeta?.botAdmin?'BOT IS ADMIN':'BOT NEEDS ADMIN'}</span></div>
               <div className="member-heading"><div><b>Live members</b><small>{members.length} members · WhatsApp group metadata</small></div><button className="secondary-btn" onClick={()=>loadMembers(selected)} disabled={memberBusy}>↻ Refresh</button></div>
               {memberMeta?.error&&<div className="warning-note">{memberMeta.error}</div>}
-              {memberMeta&&!memberMeta.botAdmin&&<div className="warning-note">Promote Major General to group admin in WhatsApp before using member controls. It cannot promote itself.</div>}
               <div className="members-list">
                 {memberBusy&&!members.length ? <div className="member-empty">Loading members…</div> : members.length ? members.map(m => (
                   <div className="member-row" key={m.id}>
@@ -177,15 +164,6 @@ export default function App() {
                     <div className="member-info">
                       <b>{m.name||m.number}</b>
                       <small>{m.number}{m.admin==='superadmin'?' · Group creator':m.admin==='admin'?' · Admin':''}{m.isBot?' · Major General':''}</small>
-                    </div>
-                    <div className="member-actions">
-                      {m.isBot ? <span className="status-tag online">BOT</span> : m.admin==='superadmin' ? <span className="status-tag">OWNER</span> : m.admin==='admin' ? <>
-                        <button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'demote')}>Demote</button>
-                        <button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button>
-                      </> : <>
-                        <button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'promote')}>Make admin</button>
-                        <button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button>
-                      </>}
                     </div>
                   </div>
                 )) : <div className="member-empty">No members loaded. Refresh to try again.</div>}
