@@ -11,7 +11,7 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const authDir = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
 let sock = null, qrDataUrl = null, connected = false, connecting = false;
 let lastConnection = null, pairingCode = null, pairingNumber = null;
-let authResetAttempted = false, authResetInProgress = false;
+let authResetAttempted = false, authResetInProgress = false, reconnectAttempts = 0, reconnectTimer = null;
 const isGroup = jid => jid && jid.endsWith('@g.us');
 function getText(msg) {
   const m = msg.message || {};
@@ -25,12 +25,12 @@ async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     let version;
     try { version = (await fetchLatestBaileysVersion()).version; } catch (_) {}
-    sock = makeWASocket({ version, auth: state, logger: logger.child({ level: 'warn' }), printQRInTerminal: false, browser: ['Major General','Chrome','1.0.0'], markOnlineOnConnect: false, syncFullHistory: false });
+    sock = makeWASocket({ version, auth: state, logger: logger.child({ level: 'warn' }), browser: ['Major General','Chrome','1.0.0'], markOnlineOnConnect: false, syncFullHistory: false, shouldSyncHistoryMessage: () => false });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', async update => {
       const { connection, lastDisconnect, qr } = update;
       if (qr) { qrDataUrl = await QRCode.toDataURL(qr); lastConnection = 'Scan QR from dashboard'; }
-      if (connection === 'open') { authResetAttempted = false; authResetInProgress = false; connected = true; qrDataUrl = null; pairingCode = null; pairingNumber = null; lastConnection = 'Connected'; connecting = false; logger.info('WhatsApp connected'); }
+      if (connection === 'open') { authResetAttempted = false; authResetInProgress = false; reconnectAttempts = 0; if (reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = null; connected = true; qrDataUrl = null; pairingCode = null; pairingNumber = null; lastConnection = 'Connected'; connecting = false; logger.info('WhatsApp connected'); }
       if (connection === 'close') {
         connected = false; connecting = false; qrDataUrl = null;
         const disconnectError = lastDisconnect?.error;
@@ -44,7 +44,7 @@ async function startBot() {
         if (code === DisconnectReason.loggedOut && !authResetAttempted) {
           authResetAttempted = true;
           authResetInProgress = true;
-          lastConnection = 'WhatsApp rejected the saved session. Backing it up and creating a fresh pairing session.';
+          lastConnection = 'WhatsApp rejected the saved session. Backing it up and creating one fresh session.';
           setTimeout(async () => {
             try {
               const backupDir = authDir + '.backup-' + new Date().toISOString().replace(/[:.]/g, '-');
@@ -52,13 +52,21 @@ async function startBot() {
               catch (e) { if (e.code !== 'ENOENT') throw e; }
               await fs.promises.mkdir(authDir, { recursive:true });
               qrDataUrl = null; pairingCode = null; pairingNumber = null; connected = false; sock = null;
-              lastConnection = 'Saved session backed up. Waiting for a fresh WhatsApp pairing code.';
+              lastConnection = 'Old session backed up. Fresh WhatsApp registration starting.';
               authResetInProgress = false;
               await startBot();
             } catch (e) { authResetInProgress = false; connecting = false; lastConnection = 'Could not reset saved session: ' + String(e.message || e).slice(0,140); logger.error({err:e}, 'WhatsApp session reset failed'); }
-          }, 1000);
-        } else if (code !== DisconnectReason.loggedOut) setTimeout(startBot, 5000);
-        else lastConnection = 'WhatsApp logged out. Saved session reset was already attempted; manual review is needed.';
+          }, 1500);
+        } else if (code === DisconnectReason.loggedOut) {
+          lastConnection = 'WhatsApp rejected the fresh session (401). Automatic retries stopped; this may be a WhatsApp cloud-host restriction.';
+          logger.error('WhatsApp rejected a fresh session; stopping reconnect loop.');
+        } else {
+          reconnectAttempts += 1;
+          const delay = Math.min(120000, 15000 * Math.pow(2, Math.min(reconnectAttempts - 1, 3)));
+          lastConnection = 'Disconnected. Retrying in ' + Math.round(delay / 1000) + ' seconds.';
+          if (reconnectTimer) clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(() => { reconnectTimer = null; startBot().catch(e => logger.error({err:e}, 'WhatsApp reconnect failed')); }, delay);
+        }
       }
     });
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
