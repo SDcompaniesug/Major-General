@@ -98,6 +98,7 @@ async function startBot() {
   } catch (e) { connecting = false; logger.error({err:e}, 'WhatsApp startup failed'); throw e; }
 }
 const activity = new Map();
+const privateReplyTimes = new Map();
 const maintenanceGroups = new Set();
 function numberOf(jid) { return String(jid || '').split('@')[0].split(':')[0]; }
 function isAdmin(p) { return !!(p && (p.admin === 'admin' || p.admin === 'superadmin')); }
@@ -113,7 +114,22 @@ function rememberActivity(key, body) {
 }
 async function handleMessage(msg) {
   const jid=msg.key.remoteJid;
-  if(!isGroup(jid)||msg.key.fromMe||!msg.message)return;
+  if(msg.key.fromMe||!msg.message||!jid)return;
+  if(!isGroup(jid)) {
+    if(!jid.endsWith('@s.whatsapp.net')&&!jid.endsWith('@lid'))return;
+    const text=getText(msg).trim();
+    if(!text)return;
+    const sender=msg.key.participant||jid;
+    const now=Date.now(), last=privateReplyTimes.get(sender)||0;
+    if(now-last<2500)return;
+    privateReplyTimes.set(sender,now);
+    const reply=t=>sock.sendMessage(jid,{text:String(t).slice(0,4000)},{quoted:msg});
+    if(/^!help$/i.test(text))return reply('🤖 MAJOR GENERAL — PRIVATE CHAT\\nSend me a question and I will answer.\\nCommands: !help · !ask <question> · !translate <language> <text>');
+    const question=text.replace(/^!ask\\s*/i,'').trim();
+    if(!question)return reply('Send me a question, or use !help to see what I can do.');
+    try{return reply(await askAI(question));}
+    catch(e){logger.warn({err:e},'private chat AI request failed');return reply('I could not answer just now. Please try again in a moment.');}
+  }
   const text=getText(msg), sender=msg.key.participant||msg.participant;
   if(!sender)return;
   const metadata=await sock.groupMetadata(jid);
@@ -316,6 +332,38 @@ async function handleParticipantUpdate(update) {
   } catch(e) {logger.warn({err:e,group:jid},'participant update handler failed');}
 }
 
+async function getGroupMembers(jid) {
+  if(!connected||!sock)throw new Error('WhatsApp is not connected.');
+  if(!isGroup(jid))throw new Error('Invalid group.');
+  const metadata=await sock.groupMetadata(jid);
+  const botNumber=numberOf(sock.user?.id);
+  const botInfo=metadata.participants.find(p=>numberOf(p.id)===botNumber||numberOf(p.phoneNumber)===botNumber);
+  return {jid:metadata.id||jid,subject:metadata.subject||'',botAdmin:isAdmin(botInfo),members:metadata.participants.map(p=>({
+    id:p.id,phoneNumber:p.phoneNumber||null,name:p.name||p.notify||p.verifiedName||numberOf(p.id),
+    number:numberOf(p.phoneNumber||p.id),admin:p.admin||null,isBot:numberOf(p.id)===botNumber
+  }))};
+}
+async function manageGroupMember(jid,target,action) {
+  if(!connected||!sock)throw new Error('WhatsApp is not connected.');
+  if(!isGroup(jid))throw new Error('Invalid group.');
+  if(!['remove','promote','demote'].includes(action))throw new Error('Unsupported member action.');
+  const metadata=await sock.groupMetadata(jid);
+  const botNumber=numberOf(sock.user?.id);
+  const botInfo=metadata.participants.find(p=>numberOf(p.id)===botNumber||numberOf(p.phoneNumber)===botNumber);
+  if(!isAdmin(botInfo))throw new Error('Major General must be a group admin before it can manage members.');
+  const member=metadata.participants.find(p=>p.id===target||numberOf(p.id)===numberOf(target)||numberOf(p.phoneNumber)===numberOf(target));
+  if(!member)throw new Error('Member is no longer in this group. Refresh the member list.');
+  if(numberOf(member.id)===botNumber)throw new Error('The bot cannot change its own group role.');
+  if(member.admin==='superadmin')throw new Error('The group creator cannot be changed by the bot.');
+  if(action==='promote'&&isAdmin(member))throw new Error('This member is already an admin.');
+  if(action==='demote'&&!isAdmin(member))throw new Error('This member is not an admin.');
+  const result=await sock.groupParticipantsUpdate(jid,[member.id],action);
+  const failed=Array.isArray(result)&&result.find(x=>x.status&&Number(x.status)>=400);
+  if(failed)throw new Error(failed.content||('WhatsApp rejected the action ('+failed.status+').'));
+  await db.logEvent(jid,member.id,'dashboard_'+action,{by:'dashboard'});
+  return {ok:true,action,member:{id:member.id,number:numberOf(member.phoneNumber||member.id),name:member.name||member.notify||numberOf(member.id)}};
+}
+
 function status() { return { connected, connecting, lastConnection, qrAvailable:!!qrDataUrl, phone:sock?.user?.id || null }; }
 function getQr() { return qrDataUrl; }
 async function prepareAccountSwitch(phoneNumber) {
@@ -370,4 +418,4 @@ async function requestPairingCode(phoneNumber) {
     return pairingCode;
   } catch (error) { pairingCode = null; pairingNumber = null; throw error; }
 }
-module.exports = { startBot, status, getQr, requestPairingCode, prepareAccountSwitch };
+module.exports = { startBot, status, getQr, requestPairingCode, prepareAccountSwitch, getGroupMembers, manageGroupMember };
