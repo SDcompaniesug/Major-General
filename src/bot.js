@@ -129,8 +129,9 @@ async function handleMessage(msg) {
   const name=command?command[1].toLowerCase():'';
   const arg=command?(command[2]||'').trim():'';
   const mentions=msg.message.extendedTextMessage?.contextInfo?.mentionedJid||[];
-  if(!command && await db.isMuted(jid,sender) && !senderAdmin) {
+  if(await db.isMuted(jid,sender) && !senderAdmin) {
     if(botAdmin) await sock.sendMessage(jid,{delete:msg.key});
+    else logger.warn({group:jid,user:sender},'Muted member spoke but bot lacks admin permission to delete the message');
     return;
   }
   if(text && !command) await db.addMessage(jid,sender,text);
@@ -164,7 +165,7 @@ async function handleMessage(msg) {
   if(command) {
     if(['help','rules'].includes(name)) {
       if(name==='rules')return reply('📜 Group rules\n'+group.rules);
-      return reply('🛡️ MAJOR GENERAL COMMANDS\n\nGeneral: !help · !rules · !ask <question> · !summarize · !translate <language> <text> · !quiz\n\nProtection (admin): !antilink on/off · !antispam on/off · !antiflood on/off · !antibadword on/off · !antiscam on/off · !aimod on/off\n\nGroup (admin): !setrules <text> · !welcome on/off · !goodbye on/off · !setwelcome <text> · !setgoodbye <text> · !lockgroup · !unlockgroup · !tagall · !admins\n\nMembers (admin): !warn @member [reason] · !warns @member · !clearwarns @member · !mute @member · !unmute @member · !kick @member · !promote @member · !demote @member\n\nWord filter (admin): !badword add <word> · !badword remove <word> · !autowarn on/off\nOwner: !botstatus · !broadcast <message> · !maintenance on/off');
+      return reply('🛡️ MAJOR GENERAL COMMANDS\n\nGeneral: !help · !rules · !ask <question> · !summarize · !translate <language> <text> · !quiz\n\nProtection (admin): !antilink on/off · !antispam on/off · !antiflood on/off · !antibadword on/off · !antiscam on/off · !aimod on/off\n\nGroup (admin): !setrules <text> · !welcome on/off · !goodbye on/off · !setwelcome <text> · !setgoodbye <text> · !lockgroup · !unlockgroup · !tagall · !admins\n\nMembers (admin): !warn @member [reason] · !warns @member · !clearwarns @member · !mute @member [10m|30m|2h|1d] · !unmute @member · !muted · !kick @member · !promote @member · !demote @member\n\nWord filter (admin): !badword add <word> · !badword remove <word> · !autowarn on/off\nOwner: !botstatus · !broadcast <message> · !maintenance on/off');
     }
     if(name==='ask') {
       if(!arg)return reply('Usage: !ask your question');
@@ -262,10 +263,20 @@ async function handleMessage(msg) {
       }
       if(name==='clearwarns') {const n=await db.clearWarnings(jid,target);return reply('✅ Cleared '+n+' warning(s).');}
       if(name==='mute') {
-        const until=new Date(Date.now()+10*60*1000);
+        if(!botAdmin)return reply('I need to be a group admin to enforce a mute by deleting the member\'s messages.');
+        if(isAdmin(targetInfo))return reply('I will not mute another group admin.');
+        const durationText=arg.replace(/^@\S+\s*/, '').trim().toLowerCase();
+        const durationMatch=durationText.match(/^(\d{1,4})(s|m|h|d)$/);
+        const amount=durationMatch?Number(durationMatch[1]):10;
+        const unit=durationMatch?durationMatch[2]:'m';
+        const multiplier=unit==='s'?1000:unit==='m'?60000:unit==='h'?3600000:86400000;
+        const durationMs=amount*multiplier;
+        if(!Number.isFinite(durationMs)||durationMs<60000||durationMs>30*86400000)return reply('Usage: !mute @member <1m–30d> (examples: 10m, 30m, 2h, 1d).');
+        const until=new Date(Date.now()+durationMs);
         await db.setMute(jid,target,until,sender);
-        await db.logEvent(jid,target,'mute',{minutes:10});
-        return reply('🔇 Member muted for 10 minutes (messages will be removed while I am a group admin).');
+        await db.logEvent(jid,target,'mute',{duration:durationText||'10m',until:until.toISOString()});
+        const shown=durationText||'10m';
+        return reply('🔇 @'+numberOf(target)+' is muted for '+shown+'. They remain in the group and can read messages. Their messages will be removed until the mute expires, then messaging is restored automatically.',{mentions:[target]});
       }
       if(name==='unmute') {await db.clearMute(jid,target);await db.logEvent(jid,target,'unmute',{});return reply('🔊 Member unmuted.');}
       if(name==='kick') {await sock.groupParticipantsUpdate(jid,[target],'remove');await db.logEvent(jid,target,'kick',{by:sender});return reply('👢 Member removed.');}
