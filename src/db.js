@@ -14,6 +14,13 @@ async function getGroup(jid) {
   const r = await pool.query('SELECT * FROM groups WHERE jid=$1', [jid]);
   return r.rows[0];
 }
+async function getSetting(key, fallback=null) {
+  const r=await pool.query('SELECT value FROM bot_settings WHERE key=$1',[key]);
+  return r.rowCount ? r.rows[0].value : fallback;
+}
+async function setSetting(key,value) {
+  await pool.query('INSERT INTO bot_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()',[key,JSON.stringify(value)]);
+}
 async function setGroup(jid, key, value) {
   const allowed = { antilink:'antilink', ai_moderation:'ai_moderation', rules:'rules', antispam:'antispam', antiflood:'antiflood', antibadword:'antibadword', antiscam:'antiscam', welcome_enabled:'welcome_enabled', goodbye_enabled:'goodbye_enabled', welcome_text:'welcome_text', goodbye_text:'goodbye_text', auto_action_enabled:'auto_action_enabled', auto_action_threshold:'auto_action_threshold' };
   if (!allowed[key]) throw new Error('Invalid group setting');
@@ -65,4 +72,4 @@ async function listGroups() {
   const r = await pool.query('SELECT jid,subject,antilink,ai_moderation,antispam,antiflood,antibadword,antiscam,welcome_enabled,goodbye_enabled,welcome_text,goodbye_text,rules,auto_action_enabled,auto_action_threshold,updated_at FROM groups ORDER BY subject');
   return r.rows;
 }
-module.exports = { pool, initDb, ensureGroup, getGroup, setGroup, addWarning, warningCount, logEvent, listGroups, clearWarnings, listWarnings, setMute, clearMute, isMuted, addMessage, recentMessages, addBadWord, removeBadWord, getBadWords, dashboardStats };
+module.exports = { pool, initDb, ensureGroup, getGroup, getSetting, setSetting, setGroup, addWarning, warningCount, logEvent, listGroups, clearWarnings, listWarnings, setMute, clearMute, isMuted, addMessage, recentMessages, addBadWord, removeBadWord, getBadWords, dashboardStats };
