@@ -65,7 +65,7 @@ async function handleMessage(msg) {
   if (command) {
     const name = command[1].toLowerCase(), arg = (command[2] || '').trim();
     if (['help','rules'].includes(name)) {
-      if (name === 'rules') return reply('📜 Group rules\\n' + group.rules);
+      if (name === 'rules') return reply('📜 Group rules\n' + group.rules);
       return reply(`🛡️ Major General commands\n!help · !rules\n!antilink on/off (admin)\n!aimod on/off (admin)\n!setrules <text> (admin)\n!warn @member [reason] (admin)\n!kick @member (admin; bot must be admin)`);
     }
     if (name === 'ask') {
