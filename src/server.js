@@ -55,15 +55,6 @@ app.get('/api/groups/:jid/members', auth, async (req,res) => {
     res.json(data);
   } catch(e) { res.status(400).json({error:e.message||'Could not load group members'}); }
 });
-app.post('/api/groups/:jid/members/:action', auth, async (req,res) => {
-  try {
-    const jid=String(req.params.jid||''), target=String(req.body?.memberJid||'');
-    if(!jid.endsWith('@g.us')||!target)return res.status(400).json({error:'Group and member are required'});
-    if(!['remove','promote','demote'].includes(req.params.action))return res.status(400).json({error:'Unsupported action'});
-    const result=await bot.manageGroupMember(jid,target,req.params.action);
-    res.json(result);
-  } catch(e) { res.status(400).json({error:e.message||'WhatsApp could not complete this action'}); }
-});
 app.get('/api/groups', auth, async (req,res) => {
   try { res.json(await db.listGroups()); } catch(e) { res.status(500).json({error:'Could not load groups'}); }
 });
