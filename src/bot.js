@@ -11,6 +11,7 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const authDir = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
 let sock = null, qrDataUrl = null, connected = false, connecting = false;
 let lastConnection = null, pairingCode = null, pairingNumber = null;
+let authResetAttempted = false, authResetInProgress = false;
 const isGroup = jid => jid && jid.endsWith('@g.us');
 function getText(msg) {
   const m = msg.message || {};
@@ -29,7 +30,7 @@ async function startBot() {
     sock.ev.on('connection.update', async update => {
       const { connection, lastDisconnect, qr } = update;
       if (qr) { qrDataUrl = await QRCode.toDataURL(qr); lastConnection = 'Scan QR from dashboard'; }
-      if (connection === 'open') { connected = true; qrDataUrl = null; pairingCode = null; pairingNumber = null; lastConnection = 'Connected'; connecting = false; logger.info('WhatsApp connected'); }
+      if (connection === 'open') { authResetAttempted = false; authResetInProgress = false; connected = true; qrDataUrl = null; pairingCode = null; pairingNumber = null; lastConnection = 'Connected'; connecting = false; logger.info('WhatsApp connected'); }
       if (connection === 'close') {
         connected = false; connecting = false;
         const code = lastDisconnect?.error?.output?.statusCode;
@@ -38,8 +39,24 @@ async function startBot() {
         pairingCode = null;
         pairingNumber = null;
         logger.warn({ statusCode:code || null, reason:String(reason).slice(0,160) }, 'WhatsApp connection closed');
-        if (code !== DisconnectReason.loggedOut) setTimeout(startBot, 5000);
-        else lastConnection = 'Logged out. Clear the saved session volume before pairing again.';
+        if (code === DisconnectReason.loggedOut && !authResetAttempted) {
+          authResetAttempted = true;
+          authResetInProgress = true;
+          lastConnection = 'WhatsApp rejected the saved session. Backing it up and creating a fresh pairing session.';
+          setTimeout(async () => {
+            try {
+              const backupDir = authDir + '.backup-' + new Date().toISOString().replace(/[:.]/g, '-');
+              try { await fs.promises.rename(authDir, backupDir); }
+              catch (e) { if (e.code !== 'ENOENT') throw e; }
+              await fs.promises.mkdir(authDir, { recursive:true });
+              qrDataUrl = null; pairingCode = null; pairingNumber = null; connected = false; sock = null;
+              lastConnection = 'Saved session backed up. Waiting for a fresh WhatsApp pairing code.';
+              authResetInProgress = false;
+              await startBot();
+            } catch (e) { authResetInProgress = false; connecting = false; lastConnection = 'Could not reset saved session: ' + String(e.message || e).slice(0,140); logger.error({err:e}, 'WhatsApp session reset failed'); }
+          }, 1000);
+        } else if (code !== DisconnectReason.loggedOut) setTimeout(startBot, 5000);
+        else lastConnection = 'WhatsApp logged out. Saved session reset was already attempted; manual review is needed.';
       }
     });
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
