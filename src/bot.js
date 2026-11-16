@@ -123,7 +123,7 @@ function status() { return { connected, connecting, lastConnection, qrAvailable:
 function getQr() { return qrDataUrl; }
 async function requestPairingCode(phoneNumber) {
   const number = String(phoneNumber || '').trim();
-  if (!/^\\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including your country calling code, without + or spaces.');
+  if (!/^\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including your country calling code, without + or spaces.');
   if (!sock) throw new Error('WhatsApp connection is not ready yet. Wait for the QR to appear, then try again.');
   if (connected || sock.authState?.creds?.registered) throw new Error('This WhatsApp session is already registered or connected.');
   if (pairingCode) {
