@@ -62,7 +62,7 @@ async function dashboardStats() {
   return {groups:g.rows[0].groups,protectedGroups:g.rows[0].protected_groups,warningsLast7Days:w.rows[0].warnings,moderationEventsLast7Days:e.rows[0].events,currentlyMuted:m.rows[0].muted_members};
 }
 async function listGroups() {
-  const r = await pool.query('SELECT jid,subject,antilink,ai_moderation,antispam,antiflood,antibadword,antiscam,welcome_enabled,goodbye_enabled,updated_at FROM groups ORDER BY subject');
+  const r = await pool.query('SELECT jid,subject,antilink,ai_moderation,antispam,antiflood,antibadword,antiscam,welcome_enabled,goodbye_enabled,welcome_text,goodbye_text,rules,auto_action_enabled,auto_action_threshold,updated_at FROM groups ORDER BY subject');
   return r.rows;
 }
 module.exports = { pool, initDb, ensureGroup, getGroup, setGroup, addWarning, warningCount, logEvent, listGroups, clearWarnings, listWarnings, setMute, clearMute, isMuted, addMessage, recentMessages, addBadWord, removeBadWord, getBadWords, dashboardStats };
