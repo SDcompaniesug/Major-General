@@ -43,6 +43,9 @@ export default function App() {
   const [phone,setPhone] = useState('');
   const [pairResult,setPairResult] = useState('');
   const [draft,setDraft] = useState({rules:'',welcome_text:'',goodbye_text:'',auto_action_threshold:3});
+  const [members,setMembers] = useState([]);
+  const [memberMeta,setMemberMeta] = useState(null);
+  const [memberBusy,setMemberBusy] = useState(false);
 
   const api = useCallback(async (url, options={}) => {
     const response = await fetch(url,{...options,headers:{Authorization:'Bearer '+token,...(options.headers||{})}});
@@ -72,8 +75,29 @@ export default function App() {
   const group = useMemo(()=>groups.find(g=>g.jid===selected)||null,[groups,selected]);
   useEffect(()=>{
     if(group) setDraft({rules:group.rules||'',welcome_text:group.welcome_text||'',goodbye_text:group.goodbye_text||'',auto_action_threshold:group.auto_action_threshold||3});
-  },[selected,groups.length]);
+    setMembers([]);setMemberMeta(null);
+    if(selected&&page==='groups')loadMembers(selected);
+  },[selected,page]);
 
+  async function loadMembers(jid=selected) {
+    if(!jid)return;
+    setMemberBusy(true);
+    try { const data=await api('/api/groups/'+encodeURIComponent(jid)+'/members');setMembers(data.members||[]);setMemberMeta(data); }
+    catch(err){setMembers([]);setMemberMeta({error:err.message});}
+    finally{setMemberBusy(false);}
+  }
+  async function memberAction(member,action) {
+    const label=action==='remove'?'remove this member from the group':action==='demote'?'remove this member’s admin role':'promote this member to admin';
+    if(!window.confirm('Are you sure you want to '+label+'?'))return;
+    setMemberBusy(true);setNotice('Sending '+action+' request to WhatsApp…');
+    try {
+      await api('/api/groups/'+encodeURIComponent(selected)+'/members/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({memberJid:member.id})});
+      setNotice('WhatsApp confirmed the '+action+' request. Refreshing members…');
+      await loadMembers(selected);
+      setNotice('Member list updated.');
+    } catch(err){setNotice(err.message);}
+    finally{setMemberBusy(false);}
+  }
   async function saveSetting(values) {
     if(!selected) return;
     setNotice('Saving changes…');
@@ -142,7 +166,13 @@ export default function App() {
           {groups.length?groups.map(g=><button key={g.jid} className={selected===g.jid?'picker-row selected':'picker-row'} onClick={()=>setSelected(g.jid)}><div className="group-avatar">▦</div><div className="group-meta"><b>{g.subject||g.jid}</b><small>{g.jid}</small></div><span className="row-arrow">›</span></button>):<Empty title="No groups found" detail="Refresh after the bot has joined a group."/>}
         </div><div className="group-editor">
           {!group?<div className="panel"><Empty title="Select a group" detail="Choose a group on the left to configure its protections."/></div>:<>
-            <div className="panel"><div className="panel-heading"><div><div className="eyebrow">SELECTED GROUP</div><h3>{group.subject||'WhatsApp group'}</h3><p>{group.jid}</p></div><span className="status-tag online">CONNECTED</span></div>
+            <div className="panel"><div className="panel-heading"><div><div className="eyebrow">SELECTED GROUP</div><h3>{group.subject||'WhatsApp group'}</h3><p>{group.jid}</p></div><span className={memberMeta?.botAdmin?'status-tag online':'status-tag offline'}>{memberMeta?.botAdmin?'BOT IS ADMIN':'BOT NEEDS ADMIN'}</span></div>
+              <div className="member-heading"><div><b>Live members</b><small>{members.length} members · WhatsApp group metadata</small></div><button className="secondary-btn" onClick={()=>loadMembers(selected)} disabled={memberBusy}>↻ Refresh</button></div>
+              {memberMeta?.error&&<div className="warning-note">{memberMeta.error}</div>}
+              {memberMeta&&!memberMeta.botAdmin&&<div className="warning-note">Promote Major General to group admin in WhatsApp before using member controls. It cannot promote itself.</div>}
+              <div className="members-list">{memberBusy&&!members.length?<div className="member-empty">Loading members…</div>:members.map(m=><div className="member-row" key={m.id}><div className="member-avatar">{(m.name||m.number||'?').slice(0,1).toUpperCase()}</div><div className="member-info"><b>{m.name||m.number}</b><small>{m.number}{m.admin==='superadmin'?' · Group creator':m.admin==='admin'?' · Admin':''}{m.isBot?' · Major General':''}</small></div><div className="member-actions">
+                {m.isBot?<span className="status-tag online">BOT</span>:m.admin==='superadmin'?<span className="status-tag">OWNER</span>:m.admin==='admin'?<><button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'demote')}>Demote</button><button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button></>:<><button className="member-action" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'promote')}>Make admin</button><button className="member-action danger" disabled={memberBusy||!memberMeta?.botAdmin} onClick={()=>memberAction(m,'remove')}>Remove</button></>}
+              </div></div>):<div className="member-empty">No members loaded. Refresh to try again.</div>}</div>
               <div className="protection-list">{protections.map(([key,title,desc])=><div className="protection-row" key={key}><div><b>{title}</b><small>{desc}</small></div><Toggle checked={!!group[key]} onChange={value=>saveSetting({[key]:value})}/></div>)}</div>
             </div>
             <div className="panel"><div className="panel-heading"><div><h3>Group messages & rules</h3><p>Customize what Major General sends in this group.</p></div></div>
