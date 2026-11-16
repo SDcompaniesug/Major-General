@@ -65,10 +65,22 @@ async function handleMessage(msg) {
   if (command) {
     const name = command[1].toLowerCase(), arg = (command[2] || '').trim();
     if (['help','rules'].includes(name)) {
-      if (name === 'rules') return reply('📜 Group rules\n' + group.rules);
-      return reply('🛡️ Major General commands\n!help · !rules\n!antilink on/off (admin)\n!aimod on/off (admin)\n!setrules <text> (admin)\n!warn @member [reason] (admin)\n!kick @member (admin; bot must be admin)');
+      if (name === 'rules') return reply('📜 Group rules
+' + group.rules);
+      return reply('🛡️ Major General commands
+!help · !rules
+!antilink on/off (admin)
+!aimod on/off (admin)
+!setrules <text> (admin)
+!warn @member [reason] (admin)
+!kick @member (admin; bot must be admin)');
     }
-    if (name === 'ask') {\n      if (!arg) return reply('Usage: !ask your question');\n      try { const answer = await askAI(arg); return reply(answer); }\n      catch (e) { logger.warn({err:e}, 'AI request failed'); return reply('⚠️ AI is unavailable. Check the OpenAI API key and try again.'); }\n    }\n    if (!senderAdmin) return reply('⛔ Only group admins can use that command.');
+    if (name === 'ask') {
+      if (!arg) return reply('Usage: !ask your question');
+      try { const answer = await askAI(arg); return reply(answer); }
+      catch (e) { logger.warn({err:e}, 'AI request failed'); return reply('⚠️ AI is unavailable. Check the OpenAI API key and try again.'); }
+    }
+    if (!senderAdmin) return reply('⛔ Only group admins can use that command.');
     if (name === 'antilink' || name === 'aimod') {
       if (!['on','off'].includes(arg.toLowerCase())) return reply('Usage: !' + name + ' on/off');
       await db.setGroup(jid, name === 'antilink' ? 'antilink' : 'ai_moderation', arg.toLowerCase() === 'on');
