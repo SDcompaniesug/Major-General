@@ -46,6 +46,7 @@ export default function App() {
   const [members,setMembers] = useState([]);
   const [memberMeta,setMemberMeta] = useState(null);
   const [memberBusy,setMemberBusy] = useState(false);
+  const [autoChatEnabled,setAutoChatEnabled] = useState(false);
 
   const api = useCallback(async (url, options={}) => {
     const response = await fetch(url,{...options,headers:{Authorization:'Bearer '+token,...(options.headers||{})}});
@@ -58,11 +59,11 @@ export default function App() {
     if(!token.trim()) return;
     setBusy(true); setNotice('');
     try {
-      const [s,st,g,e] = await Promise.all([
-        api('/api/status'),api('/api/stats'),api('/api/groups'),api('/api/events')
+      const [s,st,g,e,settings] = await Promise.all([
+        api('/api/status'),api('/api/stats'),api('/api/groups'),api('/api/events'),api('/api/settings')
       ]);
       setStatus(s); setStats(st.stats||{}); setGroups(Array.isArray(g)?g:[]);
-      setEvents(Array.isArray(e)?e:[]);
+      setEvents(Array.isArray(e)?e:[]); setAutoChatEnabled(!!settings.auto_chat_enabled);
       setSelected(current => current && g.some(x=>x.jid===current) ? current : (g[0]?.jid||''));
       setConnected(true); localStorage.setItem(STORE_KEY,token);
     } catch(err) {
@@ -94,6 +95,15 @@ export default function App() {
       setGroups(old=>old.map(g=>g.jid===selected?result.group:g));
       setNotice('Changes saved.');
     } catch(err) { setNotice(err.message); }
+  }
+  async function saveAutoChat(value) {
+    setAutoChatEnabled(value);
+    setNotice('Saving auto chat setting…');
+    try {
+      const result=await api('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_chat_enabled:value})});
+      setAutoChatEnabled(!!result.auto_chat_enabled);
+      setNotice(result.auto_chat_enabled?'Auto chat replies enabled for groups and private chats.':'Auto chat replies disabled.');
+    } catch(err) { setAutoChatEnabled(!value); setNotice(err.message); }
   }
   async function connect() { await refresh(); }
   function disconnect() { localStorage.removeItem(STORE_KEY);setToken('');setConnected(false);setStatus(null);setNotice('Dashboard disconnected.'); }
@@ -138,6 +148,7 @@ export default function App() {
       {page==='overview'&&<section className="page-content">
         <div className="welcome-row"><div><div className="eyebrow">LIVE COMMAND CENTER</div><h2>Welcome back, Commander.</h2><p>Here’s what’s happening across your WhatsApp groups.</p></div><button className="secondary-btn" onClick={refresh}>↻ Refresh data</button></div>
         <div className="stats-grid"><Stat label="Connected groups" value={stats?.groups} detail="Groups recorded by the bot" icon="▦"/><Stat label="Protected groups" value={stats?.protectedGroups} detail="At least one protection enabled" icon="⛨"/><Stat label="Warnings · 7 days" value={stats?.warningsLast7Days} detail="Member warnings recorded" icon="⚑"/><Stat label="Moderation events" value={stats?.moderationEventsLast7Days} detail="Events in the last 7 days" icon="≋"/></div>
+        <div className="panel auto-chat-panel"><div className="panel-heading"><div><div className="eyebrow">AI CONVERSATION</div><h3>Auto chat replies</h3><p>Reply automatically to incoming text messages in group and private chats.</p></div><Toggle checked={autoChatEnabled} onChange={saveAutoChat}/></div><div className="status-line"><span>Coverage</span><b>All groups + private chats</b></div><small className="muted">When enabled, Major General replies based on each incoming message. WhatsApp commands are not required.</small></div>
         <div className="overview-grid"><div className="panel"><div className="panel-heading"><div><h3>Connected groups</h3><p>Your groups registered with Major General</p></div><button className="text-btn" onClick={()=>setPage('groups')}>Manage groups →</button></div>
           {groups.length?groups.slice(0,5).map(g=><button className="group-row" key={g.jid} onClick={()=>{setSelected(g.jid);setPage('groups')}}><div className="group-avatar">▦</div><div className="group-meta"><b>{g.subject||g.jid}</b><small>{g.jid}</small></div><span className="row-arrow">→</span></button>):<Empty title="No groups yet" detail="Add Major General to a WhatsApp group to get started."/>}
         </div><div className="panel"><div className="panel-heading"><div><h3>Bot status</h3><p>WhatsApp connection health</p></div><span className={status?.connected?'status-tag online':'status-tag offline'}>{status?.connected?'ONLINE':'OFFLINE'}</span></div>
