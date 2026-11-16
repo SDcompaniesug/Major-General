@@ -157,7 +157,7 @@ function status() { return { connected, connecting, lastConnection, qrAvailable:
 function getQr() { return qrDataUrl; }
 async function prepareAccountSwitch(phoneNumber) {
   const number = String(phoneNumber || '').trim();
-  if (!/^\\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including the country code.');
+  if (!/^\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including the country code.');
   if (switchingAccount) throw new Error('An account switch is already in progress.');
   switchingAccount = true;
   connected = false;
