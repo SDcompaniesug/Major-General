@@ -25,7 +25,8 @@ async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     let version;
     try { version = (await fetchLatestBaileysVersion()).version; } catch (_) {}
-    sock = makeWASocket({ version, auth: state, logger: logger.child({ level: 'warn' }), browser: ['Major General','Chrome','1.0.0'], markOnlineOnConnect: false, syncFullHistory: false, shouldSyncHistoryMessage: () => false });
+    logger.info({ waWebVersion:version || 'library-default', pairingBrowser:'Ubuntu/Chrome' }, 'Starting WhatsApp socket');
+    sock = makeWASocket({ version, auth: state, logger: logger.child({ level: 'warn' }), browser: ['Ubuntu','Chrome','20.0.04'], markOnlineOnConnect: false, syncFullHistory: false, shouldSyncHistoryMessage: () => false });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', async update => {
       const { connection, lastDisconnect, qr } = update;
