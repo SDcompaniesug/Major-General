@@ -33,7 +33,11 @@ async function startBot() {
       if (connection === 'close') {
         connected = false; connecting = false;
         const code = lastDisconnect?.error?.output?.statusCode;
-        lastConnection = 'Disconnected (' + (code || 'unknown') + ')';
+        const reason = lastDisconnect?.error?.message || lastDisconnect?.error?.cause?.message || 'unknown error';
+        lastConnection = 'Disconnected (' + (code || 'unknown') + '): ' + String(reason).slice(0,160);
+        pairingCode = null;
+        pairingNumber = null;
+        logger.warn({ statusCode:code || null, reason:String(reason).slice(0,160) }, 'WhatsApp connection closed');
         if (code !== DisconnectReason.loggedOut) setTimeout(startBot, 5000);
         else lastConnection = 'Logged out. Clear the saved session volume before pairing again.';
       }
@@ -126,18 +130,16 @@ async function requestPairingCode(phoneNumber) {
   if (!/^\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including your country calling code, without + or spaces.');
   if (!sock) throw new Error('WhatsApp connection is not ready yet. Wait for the QR to appear, then try again.');
   if (connected || sock.authState?.creds?.registered) throw new Error('This WhatsApp session is already registered or connected.');
-  if (pairingCode) {
-    if (pairingNumber !== number) throw new Error('A pairing code has already been requested for this session. Use that code or restart pairing.');
-    return pairingCode;
-  }
-  if (!qrDataUrl) throw new Error('WhatsApp is not ready to issue a pairing code yet. Wait until the QR becomes available.');
+  if (!qrDataUrl && !pairingCode) throw new Error('WhatsApp is not ready to issue a pairing code yet. Wait until the QR becomes available.');
   if (typeof sock.requestPairingCode !== 'function') throw new Error('The installed WhatsApp library does not support phone-number pairing.');
+  // Always request a new code; never return a possibly expired/rejected code.
+  pairingCode = null;
   pairingNumber = number;
   try {
     pairingCode = await sock.requestPairingCode(number);
     qrDataUrl = null;
-    lastConnection = 'Pairing code issued; enter it in WhatsApp Linked devices.';
+    lastConnection = 'A fresh pairing code was issued; enter it in WhatsApp Linked devices.';
     return pairingCode;
-  } catch (error) { pairingNumber = null; throw error; }
+  } catch (error) { pairingCode = null; pairingNumber = null; throw error; }
 }
 module.exports = { startBot, status, getQr, requestPairingCode };
