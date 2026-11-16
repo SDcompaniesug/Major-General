@@ -11,7 +11,7 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const authDir = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
 let sock = null, qrDataUrl = null, connected = false, connecting = false;
 let lastConnection = null, pairingCode = null, pairingNumber = null;
-let authResetAttempted = false, authResetInProgress = false, reconnectAttempts = 0, reconnectTimer = null;
+let authResetAttempted = false, authResetInProgress = false, reconnectAttempts = 0, reconnectTimer = null, switchingAccount = false;
 const isGroup = jid => jid && jid.endsWith('@g.us');
 function getText(msg) {
   const m = msg.message || {};
@@ -39,6 +39,7 @@ async function startBot() {
         const reason = disconnectError?.message || disconnectError?.cause?.message || String(disconnectError || 'unknown error');
         lastConnection = 'Connection closed (' + (code || 'unknown') + '): ' + String(reason).slice(0,160);
         logger.warn('WA_DISCONNECT status=' + (code || 'unknown') + ' reason=' + String(reason).replace(/[\\r\\n]/g,' ').slice(0,240));
+        if (switchingAccount) { lastConnection = 'Old account disconnected; preparing the new account.'; return; }
         pairingCode = null;
         pairingNumber = null;
         logger.warn({ statusCode:code || null, reason:String(reason).slice(0,160) }, 'WhatsApp connection closed');
@@ -153,6 +154,36 @@ async function handleMessage(msg) {
 }
 function status() { return { connected, connecting, lastConnection, qrAvailable:!!qrDataUrl, phone:sock?.user?.id || null }; }
 function getQr() { return qrDataUrl; }
+async function prepareAccountSwitch(phoneNumber) {
+  const number = String(phoneNumber || '').trim();
+  if (!/^\\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including the country code.');
+  if (switchingAccount) throw new Error('An account switch is already in progress.');
+  switchingAccount = true;
+  connected = false;
+  qrDataUrl = null;
+  pairingCode = null;
+  pairingNumber = null;
+  lastConnection = 'Backing up the currently linked WhatsApp session.';
+  const oldSocket = sock;
+  sock = null;
+  try {
+    if (oldSocket && typeof oldSocket.end === 'function') oldSocket.end(new Error('Switching to a different WhatsApp account'));
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const backupDir = authDir + '.backup-' + new Date().toISOString().replace(/[:.]/g, '-');
+    try { await fs.promises.rename(authDir, backupDir); }
+    catch (e) { if (e.code !== 'ENOENT') throw e; }
+    await fs.promises.mkdir(authDir, { recursive: true });
+    lastConnection = 'Previous account backed up. Starting a fresh WhatsApp session for ' + number + '.';
+    switchingAccount = false;
+    await startBot();
+    return { prepared: true, backupCreated: true, phoneNumber: number, message: 'Fresh session started. Wait for the QR to appear, then request a linking code for this number.' };
+  } catch (e) {
+    switchingAccount = false;
+    connecting = false;
+    lastConnection = 'Account switch failed: ' + String(e.message || e).slice(0,140);
+    throw e;
+  }
+}
 async function requestPairingCode(phoneNumber) {
   const number = String(phoneNumber || '').trim();
   if (!/^\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including your country calling code, without + or spaces.');
@@ -170,4 +201,4 @@ async function requestPairingCode(phoneNumber) {
     return pairingCode;
   } catch (error) { pairingCode = null; pairingNumber = null; throw error; }
 }
-module.exports = { startBot, status, getQr, requestPairingCode };
+module.exports = { startBot, status, getQr, requestPairingCode, prepareAccountSwitch };
