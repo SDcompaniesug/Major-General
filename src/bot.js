@@ -25,17 +25,19 @@ async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     let version;
     try { version = (await fetchLatestBaileysVersion()).version; } catch (_) {}
-    sock = makeWASocket({ version, auth: state, logger: logger.child({ level: 'silent' }), printQRInTerminal: false, browser: ['Major General','Chrome','1.0.0'], markOnlineOnConnect: false, syncFullHistory: false });
+    sock = makeWASocket({ version, auth: state, logger: logger.child({ level: 'warn' }), printQRInTerminal: false, browser: ['Major General','Chrome','1.0.0'], markOnlineOnConnect: false, syncFullHistory: false });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', async update => {
       const { connection, lastDisconnect, qr } = update;
       if (qr) { qrDataUrl = await QRCode.toDataURL(qr); lastConnection = 'Scan QR from dashboard'; }
       if (connection === 'open') { authResetAttempted = false; authResetInProgress = false; connected = true; qrDataUrl = null; pairingCode = null; pairingNumber = null; lastConnection = 'Connected'; connecting = false; logger.info('WhatsApp connected'); }
       if (connection === 'close') {
-        connected = false; connecting = false;
-        const code = lastDisconnect?.error?.output?.statusCode;
-        const reason = lastDisconnect?.error?.message || lastDisconnect?.error?.cause?.message || 'unknown error';
-        lastConnection = 'Disconnected (' + (code || 'unknown') + '): ' + String(reason).slice(0,160);
+        connected = false; connecting = false; qrDataUrl = null;
+        const disconnectError = lastDisconnect?.error;
+        const code = disconnectError?.output?.statusCode || disconnectError?.data?.statusCode || disconnectError?.statusCode || null;
+        const reason = disconnectError?.message || disconnectError?.cause?.message || String(disconnectError || 'unknown error');
+        lastConnection = 'Connection closed (' + (code || 'unknown') + '): ' + String(reason).slice(0,160);
+        logger.warn('WA_DISCONNECT status=' + (code || 'unknown') + ' reason=' + String(reason).replace(/[\\r\\n]/g,' ').slice(0,240));
         pairingCode = null;
         pairingNumber = null;
         logger.warn({ statusCode:code || null, reason:String(reason).slice(0,160) }, 'WhatsApp connection closed');
@@ -145,7 +147,7 @@ function getQr() { return qrDataUrl; }
 async function requestPairingCode(phoneNumber) {
   const number = String(phoneNumber || '').trim();
   if (!/^\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including your country calling code, without + or spaces.');
-  if (!sock) throw new Error('WhatsApp connection is not ready yet. Wait for the QR to appear, then try again.');
+  if (!sock || !connecting && !connected && !qrDataUrl) throw new Error('WhatsApp connection is closed. Wait for a fresh QR to appear before requesting a linking code.');
   if (connected || sock.authState?.creds?.registered) throw new Error('This WhatsApp session is already registered or connected.');
   if (!qrDataUrl && !pairingCode) throw new Error('WhatsApp is not ready to issue a pairing code yet. Wait until the QR becomes available.');
   if (typeof sock.requestPairingCode !== 'function') throw new Error('The installed WhatsApp library does not support phone-number pairing.');
