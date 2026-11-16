@@ -6,6 +6,7 @@ const path = require('path');
 const QRCode = require('qrcode');
 const db = require('./db');
 const { containsLink, inspectText } = require('./moderation');
+const { askAI } = require('./ai');
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const authDir = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
 let sock = null, qrDataUrl = null, connected = false, connecting = false;
@@ -67,7 +68,7 @@ async function handleMessage(msg) {
       if (name === 'rules') return reply('📜 Group rules\n' + group.rules);
       return reply('🛡️ Major General commands\n!help · !rules\n!antilink on/off (admin)\n!aimod on/off (admin)\n!setrules <text> (admin)\n!warn @member [reason] (admin)\n!kick @member (admin; bot must be admin)');
     }
-    if (!senderAdmin) return reply('⛔ Only group admins can use that command.');
+    if (name === 'ask') {\n      if (!arg) return reply('Usage: !ask your question');\n      try { const answer = await askAI(arg); return reply(answer); }\n      catch (e) { logger.warn({err:e}, 'AI request failed'); return reply('⚠️ AI is unavailable. Check the OpenAI API key and try again.'); }\n    }\n    if (!senderAdmin) return reply('⛔ Only group admins can use that command.');
     if (name === 'antilink' || name === 'aimod') {
       if (!['on','off'].includes(arg.toLowerCase())) return reply('Usage: !' + name + ' on/off');
       await db.setGroup(jid, name === 'antilink' ? 'antilink' : 'ai_moderation', arg.toLowerCase() === 'on');
