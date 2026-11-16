@@ -153,41 +153,6 @@ async function handleMessage(msg) {
     } catch (e) { logger.warn({err:e},'AI moderation unavailable'); }
   }
 }
-async function switchAccountAndRequestPairingCode(phoneNumber) {
-  const number = String(phoneNumber || '').trim();
-  if (!/^\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including your country calling code, without + or spaces.');
-  if (switchingAccount) throw new Error('An account switch is already in progress.');
-  if (!sock) throw new Error('WhatsApp socket is not running. Check the service and try again.');
-  const currentNumber = sock.user?.id?.split(':')[0]?.split('@')[0];
-  if (currentNumber === number) throw new Error('That number is already the connected WhatsApp account.');
-  switchingAccount = true;
-  connected = false; connecting = false; qrDataUrl = null; pairingCode = null; pairingNumber = null;
-  lastConnection = 'Preparing a new WhatsApp account. The current session will be backed up.';
-  try {
-    const oldSocket = sock; sock = null;
-    try { oldSocket.end(new Error('Administrator requested WhatsApp account switch')); } catch (_) {}
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    const backupDir = authDir + '.backup-' + new Date().toISOString().replace(/[:.]/g, '-');
-    try { await fs.promises.rename(authDir, backupDir); }
-    catch (e) { if (e.code !== 'ENOENT') throw e; }
-    await fs.promises.mkdir(authDir, { recursive:true });
-    lastConnection = 'Previous WhatsApp session backed up. Starting the new account session.';
-    await startBot();
-    const deadline = Date.now() + 45000;
-    while (!qrDataUrl && Date.now() < deadline) {
-      if (!connecting && !sock) throw new Error('WhatsApp socket failed to start. Check Railway deploy logs.');
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-    if (!qrDataUrl) throw new Error('WhatsApp did not become ready for pairing within 45 seconds. Refresh dashboard status and try again.');
-    const code = await requestPairingCode(number);
-    lastConnection = 'New account pairing code issued for ' + number + '. Previous session backup preserved.';
-    switchingAccount = false;
-    return { code, backupPreserved:true };
-  } catch (error) {
-    switchingAccount = false;
-    throw error;
-  }
-}
 function status() { return { connected, connecting, lastConnection, qrAvailable:!!qrDataUrl, phone:sock?.user?.id || null }; }
 function getQr() { return qrDataUrl; }
 async function prepareAccountSwitch(phoneNumber) {
