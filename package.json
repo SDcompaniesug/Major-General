@@ -4,10 +4,15 @@
   "private": true,
   "description": "WhatsApp group moderation bot powered by Baileys, OpenAI and Neon PostgreSQL",
   "main": "src/server.js",
-  "scripts": { "start": "node src/server.js", "check": "node --check src/server.js && node --check src/bot.js && node --check src/moderation.js" },
-  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/bot.js && node --check src/moderation.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.18",
+    "@whiskeysockets/baileys": "6.7.22",
     "express": "^4.21.2",
     "openai": "^4.86.1",
     "pg": "^8.13.3",
