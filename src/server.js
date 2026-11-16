@@ -12,7 +12,12 @@ function auth(req,res,next) {
   next();
 }
 app.get('/api/status', auth, (req,res) => res.json(bot.status()));
-app.post('/api/pairing-code', auth, async (req,res) => {\n  try {\n    const code = await bot.requestPairingCode(req.body?.phoneNumber);\n    res.json({ code, instructions:'On this same phone, open WhatsApp > Linked devices > Link a device > Link with phone number instead, then enter this code.' });\n  } catch (e) { res.status(400).json({ error:e.message || 'Could not create pairing code.' }); }\n});\napp.get('/api/qr', auth, (req,res) => {
+app.post('/api/pairing-code', auth, async (req,res) => {
+  try {
+    const code = await bot.requestPairingCode(req.body?.phoneNumber);
+    res.json({ code, instructions:'On this same phone, open WhatsApp > Linked devices > Link a device > Link with phone number instead, then enter this code.' });
+  } catch (e) { res.status(400).json({ error:e.message || 'Could not create pairing code.' }); }
+});\napp.get('/api/qr', auth, (req,res) => {
   const qr = bot.getQr();
   if (!qr) return res.status(404).json({ error:'QR not available. Check bot status; it may already be connected.' });
   res.json({ qr });
