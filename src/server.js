@@ -17,7 +17,8 @@ app.post('/api/pairing-code', auth, async (req,res) => {
     const code = await bot.requestPairingCode(req.body?.phoneNumber);
     res.json({ code, instructions:'On this same phone, open WhatsApp > Linked devices > Link a device > Link with phone number instead, then enter this code.' });
   } catch (e) { res.status(400).json({ error:e.message || 'Could not create pairing code.' }); }
-});\napp.get('/api/qr', auth, (req,res) => {
+});
+app.get('/api/qr', auth, (req,res) => {
   const qr = bot.getQr();
   if (!qr) return res.status(404).json({ error:'QR not available. Check bot status; it may already be connected.' });
   res.json({ qr });
