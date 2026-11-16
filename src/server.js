@@ -47,6 +47,23 @@ app.put('/api/groups/:jid/settings', auth, async (req,res) => {
     res.json({ok:true,group:await db.getGroup(jid)});
   } catch(e) { res.status(500).json({error:'Could not save group settings'}); }
 });
+app.get('/api/groups/:jid/members', auth, async (req,res) => {
+  try {
+    const jid=String(req.params.jid||'');
+    if(!jid.endsWith('@g.us'))return res.status(400).json({error:'Invalid group'});
+    const data=await bot.getGroupMembers(jid);
+    res.json(data);
+  } catch(e) { res.status(400).json({error:e.message||'Could not load group members'}); }
+});
+app.post('/api/groups/:jid/members/:action', auth, async (req,res) => {
+  try {
+    const jid=String(req.params.jid||''), target=String(req.body?.memberJid||'');
+    if(!jid.endsWith('@g.us')||!target)return res.status(400).json({error:'Group and member are required'});
+    if(!['remove','promote','demote'].includes(req.params.action))return res.status(400).json({error:'Unsupported action'});
+    const result=await bot.manageGroupMember(jid,target,req.params.action);
+    res.json(result);
+  } catch(e) { res.status(400).json({error:e.message||'WhatsApp could not complete this action'}); }
+});
 app.get('/api/groups', auth, async (req,res) => {
   try { res.json(await db.listGroups()); } catch(e) { res.status(500).json({error:'Could not load groups'}); }
 });
