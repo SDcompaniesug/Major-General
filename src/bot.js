@@ -11,7 +11,7 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const authDir = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
 let sock = null, qrDataUrl = null, connected = false, connecting = false;
 let lastConnection = null, pairingCode = null, pairingNumber = null;
-let authResetAttempted = false, authResetInProgress = false, reconnectAttempts = 0, reconnectTimer = null, switchingAccount = false;
+let authResetAttempted = false, authResetInProgress = false, reconnectAttempts = 0, reconnectTimer = null, switchingAccount = false, socketGeneration = 0, targetPhoneNumber = null;
 const isGroup = jid => jid && jid.endsWith('@g.us');
 function getText(msg) {
   const m = msg.message || {};
@@ -20,6 +20,7 @@ function getText(msg) {
 async function startBot() {
   if (connecting) return;
   connecting = true;
+  const generation = ++socketGeneration;
   fs.mkdirSync(authDir, { recursive: true });
   try {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
@@ -29,10 +30,25 @@ async function startBot() {
     sock = makeWASocket({ version, auth: state, logger: logger.child({ level: 'warn' }), browser: ['Ubuntu','Chrome','20.0.04'], markOnlineOnConnect: false, syncFullHistory: false, shouldSyncHistoryMessage: () => false });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', async update => {
+      if (generation !== socketGeneration) return;
       const { connection, lastDisconnect, qr } = update;
       if (qr) { qrDataUrl = await QRCode.toDataURL(qr); lastConnection = 'Scan QR from dashboard'; }
-      if (connection === 'open') { authResetAttempted = false; authResetInProgress = false; reconnectAttempts = 0; if (reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = null; connected = true; qrDataUrl = null; pairingCode = null; pairingNumber = null; lastConnection = 'Connected'; connecting = false; logger.info('WhatsApp connected'); }
+      if (connection === 'open') {
+        const actualNumber = String(sock?.user?.id || '').split('@')[0].split(':')[0].replace(/\\D/g, '');
+        if (targetPhoneNumber && actualNumber !== targetPhoneNumber) {
+          connected = false; connecting = false; qrDataUrl = null;
+          lastConnection = 'Wrong WhatsApp account connected. Expected ' + targetPhoneNumber + ', received ' + (actualNumber || 'unknown') + '. Do not use this session.';
+          logger.error({ expectedPhone:targetPhoneNumber, actualPhone:actualNumber || null }, 'WhatsApp account identity mismatch');
+          return;
+        }
+        authResetAttempted = false; authResetInProgress = false; reconnectAttempts = 0;
+        if (reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = null;
+        connected = true; qrDataUrl = null; pairingCode = null; pairingNumber = null;
+        targetPhoneNumber = null; lastConnection = 'Connected'; connecting = false;
+        logger.info({ phone:actualNumber || null }, 'WhatsApp connected');
+      }
       if (connection === 'close') {
+        if (generation !== socketGeneration) return;
         connected = false; connecting = false; qrDataUrl = null;
         const disconnectError = lastDisconnect?.error;
         const code = disconnectError?.output?.statusCode || disconnectError?.data?.statusCode || disconnectError?.statusCode || null;
@@ -160,6 +176,11 @@ async function prepareAccountSwitch(phoneNumber) {
   if (!/^\d{8,15}$/.test(number)) throw new Error('Enter 8–15 digits including the country code.');
   if (switchingAccount) throw new Error('An account switch is already in progress.');
   switchingAccount = true;
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  socketGeneration++;
+  targetPhoneNumber = number;
+  connecting = false;
   connected = false;
   qrDataUrl = null;
   pairingCode = null;
@@ -169,15 +190,15 @@ async function prepareAccountSwitch(phoneNumber) {
   sock = null;
   try {
     if (oldSocket && typeof oldSocket.end === 'function') oldSocket.end(new Error('Switching to a different WhatsApp account'));
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await new Promise(resolve => setTimeout(resolve, 500));
     const backupDir = authDir + '.backup-' + new Date().toISOString().replace(/[:.]/g, '-');
     try { await fs.promises.rename(authDir, backupDir); }
     catch (e) { if (e.code !== 'ENOENT') throw e; }
     await fs.promises.mkdir(authDir, { recursive: true });
     lastConnection = 'Previous account backed up. Starting a fresh WhatsApp session for ' + number + '.';
-    switchingAccount = false;
     await startBot();
-    return { prepared: true, backupCreated: true, phoneNumber: number, message: 'Fresh session started. Wait for the QR to appear, then request a linking code for this number.' };
+    switchingAccount = false;
+    return { prepared: true, backupCreated: true, phoneNumber: number, message: 'Fresh session started for ' + number + '. Wait for the pairing code, then verify the connected number in the dashboard.' };
   } catch (e) {
     switchingAccount = false;
     connecting = false;
